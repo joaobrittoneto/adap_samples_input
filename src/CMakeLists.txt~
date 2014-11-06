@@ -1,0 +1,5 @@
+rock_library(adap_samples_input
+    SOURCES SamplesInput.cpp
+    HEADERS SamplesInput.hpp
+    DEPS_PKGCONFIG base-types)    
+

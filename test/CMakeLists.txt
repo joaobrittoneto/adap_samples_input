@@ -1,3 +1,3 @@
-rock_testsuite(test_suite suite.cpp
-   test_Dummy.cpp
+rock_executable(testing
+   SOURCES Main.cpp
    DEPS adap_samples_input)
