@@ -5,6 +5,8 @@
 #include <queue>
 #include <math.h>
 #include "SavGol.hpp"
+#include "base/samples/RigidBodyState.hpp"
+#include "base/samples/LaserScan.hpp"
 
 namespace adap_samples_input
 {
@@ -16,11 +18,20 @@ namespace adap_samples_input
 			~SamplesInput();
 
 			double Deriv(double sample, double last_sample, double delta_t);
+			// Filter_1: Moving average Filter
 			double Filter_1(std::queue<double> &queueOfPosition);
-			double Filter_2(std::queue<double> &queueOfPosition, double m, double n, double s);
+			//Fitler_2: Filter_1 till queue.size()==size, then Savitzky-Golay filter
+			double Filter_2(std::queue<double> &queueOfPosition, double size, double n, double s);
+			//Fitler_3: Savitzky-Golay filter. For even values of queue.size() count the most recent sample element twice
 			double Filter_3(std::queue<double> &queueOfPosition, double t, double n, double s);
+			//Fitler_4: Savitzky-Golay filter. For even values of queue.size() count the most recent sample element twice. Queue of RBS (retain the time of the sample).
+			base::samples::RigidBodyState Filter_4(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double s);
+			// Covert: LaserScan->RBS
+			base::samples::RigidBodyState Convert(base::samples::LaserScan sample);
+			void Remove_Outlier(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
 
 
+			// Construct a queue
 			template<typename Type>
 			void Queue (int size, Type sample, std::queue<Type> &queueOfPosition)
 			{	// number of parameters use to get the mean value.
@@ -50,7 +61,7 @@ namespace adap_samples_input
 						}
 					}
 
-
+			// Return the n_sample of a queue
 			template<typename Type>
 			Type collect (int n_sample, std::queue<Type> &queueOfSamples)
 			{
