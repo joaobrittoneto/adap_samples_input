@@ -61,22 +61,6 @@ namespace adap_samples_input
 						}
 					}
 
-			// Return the n_sample of a queue
-			template<typename Type>
-			Type collect (int n_sample, std::queue<Type> &queueOfSamples)
-			{
-				Type temp;
-				for (int i=1; i<=queueOfSamples.size(); i++)
-					{
-					Type element = queueOfSamples.front();
-					queueOfSamples.pop ();
-					if (i == n_sample)
-						temp = element;
-					queueOfSamples.push (element);
-					}
-				return temp;
-			}
-
 
 
 		private:
