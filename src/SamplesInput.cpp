@@ -100,7 +100,7 @@ namespace adap_samples_input
 				}
 			}
 		//convert the wrong direction
-		pwm[3] *=-1;
+		//pwm[3] *=-1;
 		PWMtoDC(pwm, DC_volt);
 		Forces(DC_volt, forces);
 		ForcesTorques(forces, forces_torques);
@@ -146,13 +146,13 @@ namespace adap_samples_input
 		double DDT3 = 0.30;
 		double DDT4 = 0.80;
 		double DDT5 = 0.75;
-		//Thruster Control Matrix
+		//Thruster Control Matrix of Avalon (Based on the work of Sankar-2010)
 		// O^2 Ov1 O^3
 		//     O->0				0z ->y
 		//     COG				|
 		//	   Ov4				vx
 		//	   O->5
-		TCM << 	0, 0, 1, 1, 0, 0,
+		TCM << 	0, 0, 1, -1, 0, 0,
 				1, 0, 0, 0, 0, 1,
 				0, 1, 0, 0, 1, 0,
 				0, 0, 0, 0, 0, 0,
