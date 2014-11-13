@@ -7,6 +7,8 @@
 #include "SavGol.hpp"
 #include "base/samples/RigidBodyState.hpp"
 #include "base/samples/LaserScan.hpp"
+#include "base/samples/Joints.hpp"
+#include "base/Eigen.hpp"
 
 namespace adap_samples_input
 {
@@ -30,6 +32,10 @@ namespace adap_samples_input
 			base::samples::RigidBodyState Convert(base::samples::LaserScan sample);
 			void Remove_Outlier(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
 
+			void ConvertForce(base::samples::Joints &sample, base::samples::Joints &forcesTorques);
+			void PWMtoDC(base::Vector6d &input, base::Vector6d &output);
+			void Forces(base::Vector6d &input, base::Vector6d &output);
+			void ForcesTorques(base::Vector6d &input, base::Vector6d &output);
 
 			// Construct a queue
 			template<typename Type>

@@ -24,6 +24,7 @@ namespace adap_samples_input
 			base::samples::RigidBodyState element;
 			base::samples::RigidBodyState filtered_value;
 			filtered_value.position = Eigen::VectorXd::Zero(3);
+			filtered_value.velocity = Eigen::VectorXd::Zero(3);
 			element.position = Eigen::VectorXd::Zero(3);
 
 			SavGol savgol;
@@ -43,6 +44,7 @@ namespace adap_samples_input
 					{
 					element = queueOfSamples.front();
 					filtered_value.position[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,s));
+					filtered_value.velocity[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,1));
 					queueOfSamples.pop ();
 					queueOfSamples.push (element);
 					if(i == t)
@@ -81,6 +83,83 @@ namespace adap_samples_input
 				sample.position[0] = queue.back().position[0];
 		    	//std::cout << "actual_sample.posititon[0]_after: "<< actual_sample.position[0] << std::endl<< std::endl;
 		    	}
+	}
+
+	void SamplesInput::ConvertForce(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
+	{
+		forcesTorques.elements.resize(6);
+		base::Vector6d forces = Eigen::VectorXd::Zero(6);
+		base::Vector6d pwm = Eigen::VectorXd::Zero(6);
+		base::Vector6d DC_volt = Eigen::VectorXd::Zero(6);
+		base::Vector6d forces_torques = Eigen::VectorXd::Zero(6);
+
+		if (sample.elements.size() == 6)
+			{for (int i=0; i<6; i++)
+				{
+				pwm[i] = sample.elements[i].raw;
+				}
+			}
+		//convert the wrong direction
+		pwm[3] *=-1;
+		PWMtoDC(pwm, DC_volt);
+		Forces(DC_volt, forces);
+		ForcesTorques(forces, forces_torques);
+
+		for (int i=0; i<6; i++)
+		{
+			forcesTorques.elements[i].effort = forces_torques[i];
+		}
+
+		forcesTorques.time = sample.time;
+	}
+
+	void SamplesInput::PWMtoDC(base::Vector6d &input, base::Vector6d &output)
+	{
+		output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< 6; i++)
+				output[i] = 33 * input[i];
+	}
+
+	void SamplesInput::Forces(base::Vector6d &input, base::Vector6d &output)
+	{
+		double pos_Cv = (0.0471 / 2.0);
+		double neg_Cv = (0.0547 / 2.0);
+
+		output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< 6; i++)
+			{
+			if( input[i] <= 0 )
+				output[i] = neg_Cv * input[i];
+			else
+				output[i] = pos_Cv * input[i];
+			}
+	}
+
+	void SamplesInput::ForcesTorques(base::Vector6d &input, base::Vector6d &output)
+	{
+		output = Eigen::VectorXd::Zero(6);
+		Eigen::MatrixXd TCM;
+		TCM.resize(6,6);
+		double DDT0 = 0.10;
+		double DDT1 = 0.20;
+		double DDT2 = 0.30;
+		double DDT3 = 0.30;
+		double DDT4 = 0.80;
+		double DDT5 = 0.75;
+		//Thruster Control Matrix
+		// O^2 Ov1 O^3
+		//     O->0				0z ->y
+		//     COG				|
+		//	   Ov4				vx
+		//	   O->5
+		TCM << 	0, 0, 1, 1, 0, 0,
+				1, 0, 0, 0, 0, 1,
+				0, 1, 0, 0, 1, 0,
+				0, 0, 0, 0, 0, 0,
+				0, DDT1, 0, 0, -DDT4, 0,
+				DDT0, 0, DDT2, -DDT3, 0, 0;
+
+		output = TCM * input;
 	}
 
 }

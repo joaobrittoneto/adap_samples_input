@@ -15,8 +15,8 @@ int main(int argc, char** argv)
 	double test = 0;
 	double grampoly = 0;
 	double i=-1 ;
-	double t=2 ;
-	double m=3 ;
+	double t=-2 ;
+	double m=2 ;
 	double n=2 ;
 	double s=1 ;
 
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 	{ //for (int t=-m; t<=m; t++)
 		//{
 			std::cout << std::endl << "i:"<< i << " t:" << t << " m:" << m << " n:" << n << " s:" << s << std::endl;
-			test = savGol.Weight(i,t,m,n,s)*84;
+			test = savGol.Weight(i,t,m,n,s)*70;
 			std::cout << std::endl << "test: "<< test << std::endl << std::endl;
 
 			//grampoly = savGol.GramPoly(-2,2,1,0);
