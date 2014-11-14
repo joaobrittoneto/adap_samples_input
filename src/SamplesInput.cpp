@@ -1,5 +1,18 @@
 #include "SamplesInput.hpp"
 
+/******************************************************************************/
+/*  Preparing data from Avalon to apply the adaptive parameters identification
+/*
+/*
+/* PURPOSE --- Filter the position signal, derived it to get the velocity and
+/* 				compute the forces applied in the auv
+/*
+/*  João Da Costa Britto Neto
+/*  joao.neto@dfki.de
+/*  DFKI - BREMEN 2014
+/*****************************************************************************/
+
+
 namespace adap_samples_input
 {
 
@@ -11,67 +24,72 @@ namespace adap_samples_input
 	{
 	}
 
-	double SamplesInput::Deriv(double sample, double last_sample, double delta_t)
+	// Euler's derivative
+	double SamplesInput::Deriv(double sample, double last_RBS, double delta_t)
 	{
 		double velocity;
-		velocity = (sample - last_sample) / delta_t;
+		velocity = (sample - last_RBS) / delta_t;
 		return velocity;
 	}
 
+	// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity(&actual_RBS) and acceleration(&actual_RBA)
+	void SamplesInput::Filter_SV(std::queue<base::samples::RigidBodyState> &queueOfSamples, double t, double n, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	{
+		base::samples::RigidBodyState element;
 
-	base::samples::RigidBodyState SamplesInput::Filter_4(std::queue<base::samples::RigidBodyState> &queueOfSamples, double t, double n, double s)
-		{
-			base::samples::RigidBodyState element;
-			base::samples::RigidBodyState filtered_value;
-			filtered_value.position = Eigen::VectorXd::Zero(3);
-			filtered_value.velocity = Eigen::VectorXd::Zero(3);
-			element.position = Eigen::VectorXd::Zero(3);
+		element.position = Eigen::VectorXd::Zero(3);
 
-			SavGol savgol;
-			int size = queueOfSamples.size();
+		SavGol savgol;
+		int size = queueOfSamples.size();
 
-			if(queueOfSamples.empty() || queueOfSamples.size() <= 4 )
-				filtered_value.position = Eigen::VectorXd::Zero(3);
+		if(queueOfSamples.empty() || queueOfSamples.size() <= 4 )
+			{
+				actual_RBS.position 	= Eigen::VectorXd::Zero(3);
+				actual_RBS.velocity 	= Eigen::VectorXd::Zero(3);
+				actual_RBA.acceleration = Eigen::VectorXd::Zero(3);
+			}
 
-			// While the queue's being builded, the outpupt's time is duplicated (queue.size even and the next interaction have the same time)
-			// should not avoided
-			else if (1 != fmod(size,2))
-				std::cout << std::endl << "Queue should have a odd size "<< std::endl << std::endl;
+		else if (1 != fmod(size,2))
+			std::cout << std::endl << "Queue should have a odd size "<< std::endl << std::endl;
 
-			else if (1 == fmod(size,2) && queueOfSamples.size() > 3 )
+		else if (1 == fmod(size,2) && queueOfSamples.size() > 3 )
+			{
+			// clean the variables, before calculate the new values
+			actual_RBS.position[0] 		= 0;
+			actual_RBS.velocity[0] 		= 0;
+			actual_RBA.acceleration[0] 	= 0;
+
+			for (int i=-((size-1)/2); i<=((size-1)/2); i++)
 				{
-				for (int i=-((size-1)/2); i<=((size-1)/2); i++)
-					{
 					element = queueOfSamples.front();
-					filtered_value.position[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,s));
-					filtered_value.velocity[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,1));
+					actual_RBS.position[0]  	+= (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,0));
+					actual_RBS.velocity[0]  	+= (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,1));
+					actual_RBA.acceleration[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,2));
 					queueOfSamples.pop ();
 					queueOfSamples.push (element);
 					if(i == t)
-						filtered_value.time = element.time;
+					{
+						actual_RBS.time = element.time;
+						actual_RBA.time = element.time;
 					}
 				}
+			}
 
-			else
-				std::cout << std::endl << "Filter_4 doesn't work "<< std::endl << std::endl;
-
-			return filtered_value;
-		}
-
-
-	base::samples::RigidBodyState SamplesInput::Convert(base::samples::LaserScan sample)
-	{
-		base::samples::RigidBodyState output;
-		double angle = sample.start_angle;
-
-		output.position[0] = sample.ranges[0]*cos(angle);
-		//from [mm] to [m]
-		output.position[0] = output.position[0]/1000;
-		output.time = sample.time;
-
-		return output;
+		else
+			std::cout << std::endl << "Filter_SV doesn't work "<< std::endl << std::endl;
 	}
 
+	//	Convert sample from LaserScan to RBS
+	void SamplesInput::Convert(base::samples::LaserScan sample, base::samples::RigidBodyState &output)
+	{
+		double angle = sample.start_angle;
+		output.position[0] = sample.ranges[0]*cos(angle)*(-1); // The wall is the reference (X0=0) and the front of the robot is the positive direction. That means the robot is in negative half-plane
+		//from [mm] to [m]
+		output.position[0] /= 1000;
+		output.time = sample.time;
+	}
+
+	//	Remove a outlier from sample before pushing it into the queue
 	void SamplesInput::Remove_Outlier(std::queue<base::samples::RigidBodyState> &queue, base::samples::RigidBodyState &sample)
 	{
 		//TODO Be careful with the outlier (initial case) and the amplitude.  Verify with sample 12645 (18:03:40.383727)
@@ -79,13 +97,95 @@ namespace adap_samples_input
 				((sample.position[0]/queue.back().position[0]) < 0.05 ||
 		    	(sample.position[0]/queue.back().position[0] > 20)) )
 		    	{
-		    	//std::cout << std::endl << "actual_sample.position[0]_before: "<< actual_sample.position[0] << std::endl;
+		    	//std::cout << std::endl << "actual_RBS.position[0]_before: "<< actual_RBS.position[0] << std::endl;
 				sample.position[0] = queue.back().position[0];
-		    	//std::cout << "actual_sample.posititon[0]_after: "<< actual_sample.position[0] << std::endl<< std::endl;
+		    	//std::cout << "actual_RBS.posititon[0]_after: "<< actual_RBS.position[0] << std::endl<< std::endl;
 		    	}
 	}
 
-	void SamplesInput::ConvertForce(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
+	// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
+	void SamplesInput::Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyState &last_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	{
+		double delta_t;
+		double position;
+		double last_position;
+		double velocity;
+		double last_velocity;
+		std::cout << "queueOfRBS.size(): "<< queueOfRBS.size() << std::endl;
+		// Filter works for odd values of queue.size
+		if (fmod(queueOfRBS.size(),2) == 1)
+		{	std::cout << "actual_RBS_before_filter: "<< actual_RBS.position[0] << std::endl;
+			// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
+			double t = 0;
+			// Savitzky-Golay filter. Filter(queue, t, n, RBS, RBA). queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity and acceleration
+			Filter_SV(queueOfRBS, t, 2, actual_RBS, actual_RBA);
+			std::cout << "actual_RBS_after_filter: "<< actual_RBS.position[0] << std::endl;
+			// avoid peaks, cause the first values of the queue are zero
+			if (queueOfRBS.size() == 5)
+			{
+				last_RBS = actual_RBS;
+			    last_RBS.time = base::Time::now()-actual_RBS.time;
+			}
+
+
+			////////////////////////////////////////////////////////////////////////////////////////////////
+			// The method below is used once the Filter_SV doesn't provide a reasonable value of velocity //
+			////////////////////////////////////////////////////////////////////////////////////////////////
+			position = actual_RBS.position[0];
+			last_position = last_RBS.position[0];
+			//delta_t = (actual_RBS.time.toSeconds() - last_RBS.time.toSeconds());
+			// Time step is not constant. Use a medium value from observed steps.
+			delta_t = 0.065;
+
+			actual_RBS.velocity[0] = Deriv(position, last_position, delta_t);
+
+			//remove the interference of the initial values of the queue.
+			if (queueOfRBS.size() > size/2 &&
+					(((fabs(double(actual_RBS.velocity[0]/last_RBS.velocity[0])) > 2 || fabs(double(actual_RBS.velocity[0]/last_RBS.velocity[0])) < 0.5)
+						&& fabs(double(last_RBS.velocity[0])) > 0.1)	||
+					(fabs(double(last_RBS.velocity[0]))<= 0.1 && fabs(double(actual_RBS.velocity[0]))>= 0.2)))
+			{
+				actual_RBS.velocity[0] = last_RBS.velocity[0];
+			}
+
+			velocity 		= actual_RBS.velocity[0];
+			last_velocity 	= last_RBS.velocity[0];
+			actual_RBA.acceleration[0] = Deriv(velocity, last_velocity, delta_t);
+
+
+			last_RBS = actual_RBS;
+		}
+	}
+
+	// Method used in the Task, orogen component.
+	void SamplesInput::Update_Velocity(base::samples::LaserScan sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	{
+		static bool first_loop = true;
+		static base::samples::RigidBodyState last_RBS;
+		if(first_loop)
+		{
+			last_RBS.position = Eigen::VectorXd::Zero(3);
+			last_RBS.velocity = Eigen::VectorXd::Zero(3);
+			first_loop = false;
+		}
+
+		std::cout << "Update_velocity: "<< std::endl;
+
+		//Remove the sample at 0.100645 rad once it sample rate(~0.02s) is much less then the average(~0.066s)
+			if(sample_position.start_angle <= 0.100)
+			{
+				Convert(sample_position, actual_RBS);
+				Remove_Outlier(queueOfRBS, actual_RBS);
+				Queue(size, actual_RBS, queueOfRBS);
+				std::cout << "actual_RBS_Queue: "<< actual_RBS.position[0] << std::endl;
+				Velocity(queueOfRBS, size, actual_RBS, last_RBS, actual_RBA);
+				std::cout << "actual_RBS_velocity: "<< actual_RBS.position[0] << std::endl;
+			}
+	}
+
+
+	// Convert from PWM->Newton
+	void SamplesInput::ConvertForce(base::samples::Joints sample, base::samples::Joints &forcesTorques)
 	{
 		forcesTorques.elements.resize(6);
 		base::Vector6d forces = Eigen::VectorXd::Zero(6);
@@ -100,7 +200,7 @@ namespace adap_samples_input
 				}
 			}
 		//convert the wrong direction
-		//pwm[3] *=-1;
+		pwm[3] *=-1;
 		PWMtoDC(pwm, DC_volt);
 		Forces(DC_volt, forces);
 		ForcesTorques(forces, forces_torques);
@@ -113,16 +213,18 @@ namespace adap_samples_input
 		forcesTorques.time = sample.time;
 	}
 
-	void SamplesInput::PWMtoDC(base::Vector6d &input, base::Vector6d &output)
+	// From PWM->DC. Verify constant used
+	void SamplesInput::PWMtoDC(base::Vector6d input, base::Vector6d &output)
 	{
 		output = Eigen::VectorXd::Zero(6);
 		for(int i=0; i< 6; i++)
-				output[i] = 33 * input[i];
+				output[i] = 33 * input[i]; // Constant to be verified
 	}
 
-	void SamplesInput::Forces(base::Vector6d &input, base::Vector6d &output)
+	// From DC->N for each thruster. Verify constant used
+	void SamplesInput::Forces(base::Vector6d input, base::Vector6d &output)
 	{
-		double pos_Cv = (0.0471 / 2.0);
+		double pos_Cv = (0.0471 / 2.0);	// Constants to be verified
 		double neg_Cv = (0.0547 / 2.0);
 
 		output = Eigen::VectorXd::Zero(6);
@@ -135,7 +237,8 @@ namespace adap_samples_input
 			}
 	}
 
-	void SamplesInput::ForcesTorques(base::Vector6d &input, base::Vector6d &output)
+	// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
+	void SamplesInput::ForcesTorques(base::Vector6d input, base::Vector6d &output)
 	{
 		output = Eigen::VectorXd::Zero(6);
 		Eigen::MatrixXd TCM;
@@ -152,7 +255,7 @@ namespace adap_samples_input
 		//     COG				|
 		//	   Ov4				vx
 		//	   O->5
-		TCM << 	0, 0, 1, -1, 0, 0,
+		TCM << 	0, 0, 1, 1, 0, 0,
 				1, 0, 0, 0, 0, 1,
 				0, 1, 0, 0, 1, 0,
 				0, 0, 0, 0, 0, 0,
@@ -160,6 +263,27 @@ namespace adap_samples_input
 				DDT0, 0, DDT2, -DDT3, 0, 0;
 
 		output = TCM * input;
+	}
+
+	// Method used in the Task, orogen component.
+	void SamplesInput::Update_Force(base::samples::Joints sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output)
+	{
+		ConvertForce(sample, forces_output);
+		Queue(size, forces_output, queueOfForces);
+	}
+
+	// Compensate the position-filter delays, aligning the forces and velocities
+	void SamplesInput::Delay_Compensate(base::samples::RigidBodyState actual_RBS, std::queue<base::samples::Joints> queueOfForces, base::samples::Joints &forces_output)
+	{
+		base::samples::Joints time_force;
+		std::queue<base::samples::Joints> queueForces = queueOfForces;
+		for(int i=0; i < queueForces.size(); i++)
+		{
+			time_force = queueForces.front();
+			queueForces.pop();
+			if( fabs((actual_RBS.time-time_force.time).toSeconds()) <= 0.1)
+				forces_output = time_force;
+		 }
 	}
 
 }
