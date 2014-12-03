@@ -24,10 +24,16 @@ namespace adap_samples_input
 	{
 	}
 
-
+	// Euler's derivative
+	double SamplesInput::Deriv(double sample, double last_RBS, double delta_t)
+	{
+		double velocity;
+		velocity = (sample - last_RBS) / delta_t;
+		return velocity;
+	}
 
 	// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity(&actual_RBS) and acceleration(&actual_RBA)
-	void SamplesInput::Filter_SV(std::queue<base::samples::RigidBodyState> &queueOfSamples, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	void SamplesInput::Filter_SV(std::queue<base::samples::RigidBodyState> &queueOfSamples, double t, double n, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
 		base::samples::RigidBodyState element;
 
@@ -56,9 +62,9 @@ namespace adap_samples_input
 			for (int i=-((size-1)/2); i<=((size-1)/2); i++)
 				{
 					element = queueOfSamples.front();
-					actual_RBS.position[0]  	+= (element.angular_velocity[0] * savgol.Weight(i,t,((size-1)/2),n,0));
-					actual_RBS.velocity[0]  	+= (element.angular_velocity[0] * savgol.Weight(i,t,((size-1)/2),n,1));
-					actual_RBA.acceleration[0]  += (element.angular_velocity[0] * savgol.Weight(i,t,((size-1)/2),n,2));
+					actual_RBS.position[0]  	+= (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,0));
+					actual_RBS.velocity[0]  	+= (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,1));
+					actual_RBA.acceleration[0]  += (element.position[0] * savgol.Weight(i,t,((size-1)/2),n,2));
 					queueOfSamples.pop ();
 					queueOfSamples.push (element);
 					if(i == t)
@@ -67,34 +73,19 @@ namespace adap_samples_input
 						actual_RBA.time = element.time;
 					}
 				}
-			actual_RBS.velocity[0] /= step;
-			actual_RBA.acceleration[0] /= (step*step);
-			//insert the filtered position and velocity in the queue
-			for (int i=-((size-1)/2); i<=((size-1)/2); i++)
-				{
-					element = queueOfSamples.front();
-					queueOfSamples.pop ();
-					if(i == t)
-					{
-						element.position[0] = actual_RBS.position[0];
-						element.velocity[0] = actual_RBS.velocity[0];
-					}
-					queueOfSamples.push (element);
-				}
-
 			}
 
 		else
 			std::cout << std::endl << "Filter_SV doesn't work "<< std::endl << std::endl;
 	}
 
-	//	Convert sample from LaserScan to RBS. Put the raw position in the angular_velocity[0]. Let the position[0] to the filtered value
+	//	Convert sample from LaserScan to RBS
 	void SamplesInput::Convert(base::samples::LaserScan &sample, base::samples::RigidBodyState &output)
 	{
 		double angle = sample.start_angle;
-		output.angular_velocity[0] = sample.ranges[0]*cos(angle)*(-1); // The wall is the reference (X0=0) and the front of the robot is the positive direction. That means the robot is in negative half-plane
+		output.position[0] = sample.ranges[0]*cos(angle)*(-1); // The wall is the reference (X0=0) and the front of the robot is the positive direction. That means the robot is in negative half-plane
 		//from [mm] to [m]
-		output.angular_velocity[0] /= 1000;
+		output.position[0] /= 1000;
 		output.time = sample.time;
 	}
 
@@ -102,47 +93,94 @@ namespace adap_samples_input
 	void SamplesInput::Remove_Outlier(std::queue<base::samples::RigidBodyState> &queue, base::samples::RigidBodyState &sample)
 	{
 		//TODO Be careful with the outlier (initial case) and the amplitude.  Verify with sample 12645 (18:03:40.383727)
-		if ( (!queue.empty()) && (queue.back().angular_velocity[0] != 0) &&
-				((sample.angular_velocity[0]/queue.back().angular_velocity[0]) < 0.05 ||
-		    	(sample.angular_velocity[0]/queue.back().angular_velocity[0] > 20)) )
+		if ( (!queue.empty()) && (queue.back().position[0] != 0) &&
+				((sample.position[0]/queue.back().position[0]) < 0.05 ||
+		    	(sample.position[0]/queue.back().position[0] > 20)) )
 		    	{
 		    	//std::cout << std::endl << "actual_RBS.position[0]_before: "<< actual_RBS.position[0] << std::endl;
-				sample.angular_velocity[0] = queue.back().angular_velocity[0];
+				sample.position[0] = queue.back().position[0];
 		    	//std::cout << "actual_RBS.posititon[0]_after: "<< actual_RBS.position[0] << std::endl<< std::endl;
 		    	}
-		//clean the values before insert in the queue
-		sample.position[0] 		= 0;
-		sample.velocity[0] 		= 0;
 	}
 
 	// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
-	void SamplesInput::Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	void SamplesInput::Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyState &last_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
+		double delta_t;
+		double position;
+		double last_position;
+		double velocity;
+		double last_velocity;
+		std::cout << "queueOfRBS.size(): "<< queueOfRBS.size() << std::endl;
 		// Filter works for odd values of queue.size
 		if (fmod(queueOfRBS.size(),2) == 1)
-		{
+		{	std::cout << "actual_RBS_before_filter: "<< actual_RBS.position[0] << std::endl;
 			// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
 			double t = 0;
-			// Order of the polynomial
-			double n = 3;
-			// step used to establish the derivatives
-			double step = 0.065; 	// 0.065 from observed values
 			// Savitzky-Golay filter. Filter(queue, t, n, RBS, RBA). queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity and acceleration
-			Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA);
+			Filter_SV(queueOfRBS, t, 3, actual_RBS, actual_RBA);
+			std::cout << "actual_RBS_after_filter: "<< actual_RBS.position[0] << std::endl;
+			// avoid peaks, cause the first values of the queue are zero
+			if (queueOfRBS.size() == 5)
+			{
+				last_RBS = actual_RBS;
+			    last_RBS.time = base::Time::now()-actual_RBS.time;
+			}
+
+
+			////////////////////////////////////////////////////////////////////////////////////////////////
+			// The method below is used once the Filter_SV is not providing a reasonable value of velocity //
+			////////////////////////////////////////////////////////////////////////////////////////////////
+			position = actual_RBS.position[0];
+			last_position = last_RBS.position[0];
+			//delta_t = (actual_RBS.time.toSeconds() - last_RBS.time.toSeconds());
+			// Time step is not constant. Use a medium value from observed steps.
+			delta_t = 0.065;
+
+			actual_RBS.velocity[0] = Deriv(position, last_position, delta_t);
+
+			//remove the interference of the initial values of the queue.
+			if (queueOfRBS.size() > size/2 &&
+					(((fabs(double(actual_RBS.velocity[0]/last_RBS.velocity[0])) > 2 || fabs(double(actual_RBS.velocity[0]/last_RBS.velocity[0])) < 0.5)
+						&& fabs(double(last_RBS.velocity[0])) > 0.1)	||
+					(fabs(double(last_RBS.velocity[0]))<= 0.1 && fabs(double(actual_RBS.velocity[0]))>= 0.2)))
+			{
+				actual_RBS.velocity[0] = last_RBS.velocity[0];
+			}
+
+			velocity 		= actual_RBS.velocity[0];
+			last_velocity 	= last_RBS.velocity[0];
+			actual_RBA.acceleration[0] = Deriv(velocity, last_velocity, delta_t);
+
+
+			last_RBS = actual_RBS;
 		}
 	}
 
 	// Method used in the Task, orogen component.
 	void SamplesInput::Update_Velocity(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
-		//Remove the sample at 0.100645 rad once it sample rate(~0.02s) is much less then the average(~0.066s)
-		if(sample_position.start_angle <= 0.10)
+		static bool first_loop = true;
+		static base::samples::RigidBodyState last_RBS;
+		if(first_loop)
 		{
-			Convert(sample_position, actual_RBS);
-			Remove_Outlier(queueOfRBS, actual_RBS);
-			Queue(size, actual_RBS, queueOfRBS);
-			Velocity(queueOfRBS, size, actual_RBS, actual_RBA);
+			last_RBS.position = Eigen::VectorXd::Zero(3);
+			last_RBS.velocity = Eigen::VectorXd::Zero(3);
+			first_loop = false;
 		}
+
+		std::cout << "Update_velocity: "<< std::endl;
+
+		//Remove the sample at 0.100645 rad once it sample rate(~0.02s) is much less then the average(~0.066s)
+			if(sample_position.start_angle <= 0.10)
+			{
+				Convert(sample_position, actual_RBS);
+				Remove_Outlier(queueOfRBS, actual_RBS);
+				Queue(size, actual_RBS, queueOfRBS);
+				std::cout << "actual_RBS_Queue: "<< actual_RBS.position[0] << std::endl;
+				Velocity(queueOfRBS, size, actual_RBS, last_RBS, actual_RBA);
+				std::cout << "actual_RBS_velocity: "<< actual_RBS.velocity[0] << std::endl;
+			}
 	}
 
 
@@ -237,28 +275,15 @@ namespace adap_samples_input
 	// Compensate the position-filter delays, aligning the forces and velocities
 	void SamplesInput::Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output)
 	{
-		base::samples::Joints front_force;
-		base::samples::Joints behind_force;
-		bool stop = false;
+		base::samples::Joints time_force;
 		std::queue<base::samples::Joints> queueForces = queueOfForces;
-		//interpolate the force
-		while(!queueForces.empty() && !stop)
+		for(int i=0; i < queueForces.size(); i++)
 		{
-			front_force = queueForces.front();
+			time_force = queueForces.front();
 			queueForces.pop();
-			if((actual_RBS.time-front_force.time).toSeconds() > 0)
-			{
-				behind_force = front_force;
-			}
-			else
-			{
-				float delta = (front_force.elements[0].effort - behind_force.elements[0].effort) * ((actual_RBS.time-behind_force.time).toSeconds())
-								/ ((front_force.time - behind_force.time).toSeconds());
-				forces_output.elements[0].effort = delta + behind_force.elements[0].effort;
-				forces_output.time = actual_RBS.time;
-				stop = true;
-			}
-		}
+			if( fabs((actual_RBS.time-time_force.time).toSeconds()) <= 0.1)
+				forces_output = time_force;
+		 }
 	}
 
 }
