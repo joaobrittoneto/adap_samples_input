@@ -17,6 +17,7 @@
 #include <queue>
 #include <math.h>
 #include "SavGol.hpp"
+#include "samples_dataType.h"
 #include "base/samples/RigidBodyState.hpp"
 #include "base/samples/RigidBodyAcceleration.hpp"
 #include "base/samples/LaserScan.hpp"
@@ -37,15 +38,15 @@ namespace adap_samples_input
 			// Position-Velocity Data Processing
 			///////////////////////////////////////////////////////////////
 			// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity(&actual_RBS) and acceleration(&actual_RBA)
-			void Filter_SV(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			bool Filter_SV(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 			// Covert: LaserScan->RBS
 			void Convert(base::samples::LaserScan &sample, base::samples::RigidBodyState &output);
 			// Remove a outlier from sample before pushing it into the queue
 			void Remove_Outlier(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
 			// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
-			void Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			bool Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 			// Method used in the Task, orogen component.
-			void Update_Velocity(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			bool Update_Velocity(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 
 			//////////////////////////////////////////////////////////////
 			// Force Data Processing
@@ -62,8 +63,9 @@ namespace adap_samples_input
 			void Update_Force(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output);
 
 			// Compensate the position-filter delays, aligning the forces and velocities
-			void Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output);
-
+			bool Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output);
+			// Agglomarate the data of velocity, acceleration and force into one structure. To be used after the Delay_Compensate
+			void Agglomerate(base::samples::Joints &force, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA, DynamicAUV &dynamic);
 
 			// Construct a queue
 			template<typename Type>
@@ -75,7 +77,7 @@ namespace adap_samples_input
 					queueOfPosition.push (sample);
 				}
 
-				if (queueOfPosition.size() > size && !queueOfPosition.empty())
+				else if (queueOfPosition.size() > size && !queueOfPosition.empty())
 				{	//add a new element in the queue while reduce its size by two till the the queue reach a smaller size
 					//remove least element
 					queueOfPosition.pop ();
@@ -87,7 +89,7 @@ namespace adap_samples_input
 					queueOfPosition.pop ();
 				}
 
-				if (queueOfPosition.size() == size && !queueOfPosition.empty())
+				else if (queueOfPosition.size() == size && !queueOfPosition.empty())
 				{	//remove least element
 					queueOfPosition.pop();
 					//insert new element
