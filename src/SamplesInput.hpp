@@ -40,28 +40,33 @@ namespace adap_samples_input
 			// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity(&actual_RBS) and acceleration(&actual_RBA)
 			bool Filter_SV(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 			// Covert: LaserScan->RBS
-			void Convert(base::samples::LaserScan &sample, base::samples::RigidBodyState &output);
+			void Convert_Avalon(base::samples::LaserScan &sample, base::samples::RigidBodyState &output);
 			// Remove a outlier from sample before pushing it into the queue
 			void Remove_Outlier(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
 			// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
-			bool Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			//bool Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA, double t, double n, double step);
 			// Method used in the Task, orogen component.
-			bool Update_Velocity(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			bool Update_Velocity_Avalon(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+
+			bool Update_Velociity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 
 			//////////////////////////////////////////////////////////////
 			// Force Data Processing
 			///////////////////////////////////////////////////////////////
 			// Convert from PWM->Newton
-			void ConvertForce(base::samples::Joints &sample, base::samples::Joints &forcesTorques);
+			void ConvertForce_Avalon(base::samples::Joints &sample, base::samples::Joints &forcesTorques);
 			// From PWM->DC. Verify constant used
-			void PWMtoDC(base::Vector6d &input, base::Vector6d &output);
+			void PWMtoDC(base::Vector6d &input, base::Vector6d &output, double ThrusterVoltage);
 			// From DC->N for each thruster. Verify constant used
-			void Forces(base::Vector6d &input, base::Vector6d &output);
+			void Forces(base::Vector6d &input, base::Vector6d &output, double pos_Cv, double neg_Cv);
 			// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
-			void ForcesTorques(base::Vector6d &input, base::Vector6d &output);
+			void ForcesTorques(base::Vector6d &input, base::Vector6d &output, Eigen::MatrixXd TCM);
 			// Method used in the Task, orogen component.
-			void Update_Force(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output);
+			void Update_Force_Avalon(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output);
 
+			/////////////////////////////////////////////////////////////////////////
+			// Support functions
+			////////////////////////////////////////////////////////////////////////
 			// Compensate the position-filter delays, aligning the forces and velocities
 			bool Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output);
 			// Agglomarate the data of velocity, acceleration and force into one structure. To be used after the Delay_Compensate

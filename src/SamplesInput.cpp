@@ -46,7 +46,7 @@ namespace adap_samples_input
 
 		else if (1 != fmod(size,2))
 			{
-			std::cout << std::endl << "Queue should have a odd size "<< std::endl << std::endl;
+			//std::cout << std::endl << "Queue should have a odd size "<< std::endl << std::endl;
 			return false;
 			}
 
@@ -98,7 +98,7 @@ namespace adap_samples_input
 	}
 
 	//	Convert sample from LaserScan to RBS. Put the raw position in the angular_velocity[0]. Let the position[0] to the filtered value
-	void SamplesInput::Convert(base::samples::LaserScan &sample, base::samples::RigidBodyState &output)
+	void SamplesInput::Convert_Avalon(base::samples::LaserScan &sample, base::samples::RigidBodyState &output)
 	{
 		double angle = sample.start_angle;
 		output.angular_velocity[0] = sample.ranges[0]*cos(angle)*(-1); // The wall is the reference (X0=0) and the front of the robot is the positive direction. That means the robot is in negative half-plane
@@ -125,44 +125,61 @@ namespace adap_samples_input
 	}
 
 	// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
-	bool SamplesInput::Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+/*	bool SamplesInput::Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA, double t, double n, double step)
 	{
 		// Filter works for odd values of queue.size
 		if (fmod(queueOfRBS.size(),2) == 1)
 		{
-			// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
-			double t = 0;
-			// Order of the polynomial
-			double n = 3;
-			// step used to establish the derivatives
-			double step = 0.065; 	// 0.065 from observed values
 			// Savitzky-Golay filter. Filter(queue, t, n, RBS, RBA). queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the smooth position, velocity and acceleration
 			return Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA);
 		}
 		else
 			return false;
 	}
-
+*/
 	// Method used in the Task, orogen component.
-	bool SamplesInput::Update_Velocity(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	bool SamplesInput::Update_Velocity_Avalon(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
 		base::samples::RigidBodyState rbs;
+		// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
+		double t = 0;
+		// Order of the polynomial
+		double n = 3;
+		// step used to establish the derivatives
+		double step = 0.065; 	// 0.065 from observed values in Avalon
 
 		//Remove the sample at 0.100645 rad once it sample rate(~0.02s) is much less then the average(~0.066s)
 		if(sample_position.start_angle <= 0.10)
 		{
-			Convert(sample_position, rbs);
+			Convert_Avalon(sample_position, rbs);
 			Remove_Outlier(queueOfRBS, rbs);
 			Queue(size, rbs, queueOfRBS);
-			return Velocity(queueOfRBS, size, actual_RBS, actual_RBA);
+			return Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA); //Velocity(queueOfRBS, size, actual_RBS, actual_RBA, t, n, step);
 		}
 		else
 			return false;
 	}
 
+	// Method used in the Task, orogen component.
+	bool Update_Velociity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	{
+		base::samples::RigidBodyState rbs = sample_position;
+		// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
+		double t = 0;
+		// Order of the polynomial
+		double n = 3;
+		// step used to establish the derivatives
+		double step = 0.065; 	// 0.065 from observed values in Avalon
+		Remove_Outlier(queueOfRBS, rbs);
+		Queue(size, rbs, queueOfRBS);
+		return Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA); //Velocity(queueOfRBS, size, actual_RBS, actual_RBA, t, n, step);
+
+	}
+
+
 
 	// Convert from PWM->Newton
-	void SamplesInput::ConvertForce(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
+	void SamplesInput::ConvertForce_Avalon(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
 	{
 		forcesTorques.elements.resize(6);
 		base::Vector6d forces = Eigen::VectorXd::Zero(6);
@@ -170,62 +187,22 @@ namespace adap_samples_input
 		base::Vector6d DC_volt = Eigen::VectorXd::Zero(6);
 		base::Vector6d forces_torques = Eigen::VectorXd::Zero(6);
 
-		if (sample.elements.size() == 6)
-			{for (int i=0; i<6; i++)
+		if (sample.elements.size() > 0)
+			{for (int i=0; i<sample.elements.size(); i++)
 				{
 				pwm[i] = sample.elements[i].raw * (-1); // forces according the movement
 				}
 			}
+
+		// AVALON DATA///////
 		//convert the wrong direction
 		pwm[3] *=-1;
-		PWMtoDC(pwm, DC_volt);
-		Forces(DC_volt, forces);
-		ForcesTorques(forces, forces_torques);
-
-		for (int i=0; i<6; i++)
-		{
-			forcesTorques.elements[i].effort = forces_torques[i];
-		}
-
-		forcesTorques.time = sample.time;
-	}
-
-	// From PWM->DC. Verify constant used
-	void SamplesInput::PWMtoDC(base::Vector6d &input, base::Vector6d &output)
-	{
-		output = Eigen::VectorXd::Zero(6);
-		for(int i=0; i< 6; i++)
-				output[i] = 33 * input[i]; // Constant to be verified
-	}
-
-	// From DC->N for each thruster. Verify constant used
-	void SamplesInput::Forces(base::Vector6d &input, base::Vector6d &output)
-	{
+		double ThrusterVoltage = 33; // Constant to be verified
 		double pos_Cv = (0.0471 / 2.0);	// Constants to be verified
 		double neg_Cv = (0.0547 / 2.0);
-
-		output = Eigen::VectorXd::Zero(6);
-		for(int i=0; i< 6; i++)
-			{
-			if( input[i] <= 0 )
-				output[i] = neg_Cv * input[i] * fabs(double (input[i]));
-			else
-				output[i] = pos_Cv * input[i] * fabs(double (input[i]));
-			}
-	}
-
-	// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
-	void SamplesInput::ForcesTorques(base::Vector6d &input, base::Vector6d &output)
-	{
-		output = Eigen::VectorXd::Zero(6);
 		Eigen::MatrixXd TCM;
 		TCM.resize(6,6);
-		double DDT0 = 0.10;
-		double DDT1 = 0.20;
-		double DDT2 = 0.30;
-		double DDT3 = 0.30;
-		double DDT4 = 0.80;
-		double DDT5 = 0.75;
+		double DDT0 = 0.10;	double DDT1 = 0.20;	double DDT2 = 0.30;	double DDT3 = 0.30;	double DDT4 = 0.80;	double DDT5 = 0.75;
 		//Thruster Control Matrix of Avalon (Based on the work of Sankar-2010)
 		// O^2 Ov1 O^3
 		//     O->0				0z ->y
@@ -238,14 +215,51 @@ namespace adap_samples_input
 				0, 0, 0, 0, 0, 0,
 				0, DDT1, 0, 0, -DDT4, 0,
 				DDT0, 0, DDT2, -DDT3, 0, 0;
+		////////////////////
+		PWMtoDC(pwm, DC_volt, ThrusterVoltage);
+		Forces(DC_volt, forces, pos_Cv, neg_Cv);
+		ForcesTorques(forces, forces_torques, TCM);
 
+		for (int i=0; i<6; i++)
+		{
+			forcesTorques.elements[i].effort = forces_torques[i];
+		}
+
+		forcesTorques.time = sample.time;
+	}
+
+	// From PWM->DC. Verify constant used
+	void SamplesInput::PWMtoDC(base::Vector6d &input, base::Vector6d &output, double ThrusterVoltage)
+	{
+		output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< 6; i++)
+				output[i] = ThrusterVoltage * input[i];
+	}
+
+	// From DC->N for each thruster. Verify constant used
+	void SamplesInput::Forces(base::Vector6d &input, base::Vector6d &output, double pos_Cv, double neg_Cv)
+	{
+		output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< 6; i++)
+			{
+			if( input[i] <= 0 )
+				output[i] = neg_Cv * input[i] * fabs(double (input[i]));
+			else
+				output[i] = pos_Cv * input[i] * fabs(double (input[i]));
+			}
+	}
+
+	// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
+	void SamplesInput::ForcesTorques(base::Vector6d &input, base::Vector6d &output, Eigen::MatrixXd TCM)
+	{
+		output = Eigen::VectorXd::Zero(6);
 		output = TCM * input;
 	}
 
 	// Method used in the Task, orogen component.
-	void SamplesInput::Update_Force(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output)
+	void SamplesInput::Update_Force_Avalon(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output)
 	{
-		ConvertForce(sample, forces_output);
+		ConvertForce_Avalon(sample, forces_output);
 		Queue(size, forces_output, queueOfForces);
 	}
 
