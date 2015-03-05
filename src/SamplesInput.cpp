@@ -108,7 +108,7 @@ namespace adap_samples_input
 	}
 
 	//	Remove a outlier from sample before pushing it into the queue
-	void SamplesInput::Remove_Outlier(std::queue<base::samples::RigidBodyState> &queue, base::samples::RigidBodyState &sample)
+	void SamplesInput::Remove_Outlier_Avalon(std::queue<base::samples::RigidBodyState> &queue, base::samples::RigidBodyState &sample)
 	{
 		//TODO Be careful with the outlier (initial case) and the amplitude.  Verify with sample 12645 (18:03:40.383727)
 		if ( (!queue.empty()) && (queue.back().angular_velocity[0] != 0) &&
@@ -137,6 +137,7 @@ namespace adap_samples_input
 			return false;
 	}
 */
+
 	// Method used in the Task, orogen component.
 	bool SamplesInput::Update_Velocity_Avalon(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
@@ -152,7 +153,7 @@ namespace adap_samples_input
 		if(sample_position.start_angle <= 0.10)
 		{
 			Convert_Avalon(sample_position, rbs);
-			Remove_Outlier(queueOfRBS, rbs);
+			Remove_Outlier_Avalon(queueOfRBS, rbs);
 			Queue(size, rbs, queueOfRBS);
 			return Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA); //Velocity(queueOfRBS, size, actual_RBS, actual_RBA, t, n, step);
 		}
@@ -160,17 +161,26 @@ namespace adap_samples_input
 			return false;
 	}
 
+
+	void SamplesInput::Convert_Seabotix(base::samples::RigidBodyState &sample, base::samples::RigidBodyState &output)
+		{
+			output.angular_velocity[0] = sample.position[0];//*(-1); // The wall is the reference (X0=0) and the front of the robot is the positive direction. That means the robot is in negative half-plane
+			output.time = sample.time;
+		}
+
+
+
 	// Method used in the Task, orogen component.
-	bool Update_Velociity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
+	bool SamplesInput::Update_Velocity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA)
 	{
-		base::samples::RigidBodyState rbs = sample_position;
+		base::samples::RigidBodyState rbs;
 		// Position that will be take in account when applying the filter. May vary from -(queue.size-1)/2 to (queue.size-1)/2 where 0 is at the center of the queue.
 		double t = 0;
 		// Order of the polynomial
 		double n = 3;
 		// step used to establish the derivatives
-		double step = 0.065; 	// 0.065 from observed values in Avalon
-		Remove_Outlier(queueOfRBS, rbs);
+		double step = 0.05; 	// 0.05 from observed values in Seabotix
+		Convert_Seabotix(sample_position, rbs);
 		Queue(size, rbs, queueOfRBS);
 		return Filter_SV(queueOfRBS, t, n, step, actual_RBS, actual_RBA); //Velocity(queueOfRBS, size, actual_RBS, actual_RBA, t, n, step);
 
@@ -182,9 +192,10 @@ namespace adap_samples_input
 	void SamplesInput::ConvertForce_Avalon(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
 	{
 		forcesTorques.elements.resize(6);
-		base::Vector6d forces = Eigen::VectorXd::Zero(6);
-		base::Vector6d pwm = Eigen::VectorXd::Zero(6);
-		base::Vector6d DC_volt = Eigen::VectorXd::Zero(6);
+		int n_thruster = sample.elements.size();
+		base::VectorXd forces = Eigen::VectorXd::Zero(n_thruster);
+		base::VectorXd pwm = Eigen::VectorXd::Zero(n_thruster);
+		base::VectorXd DC_volt = Eigen::VectorXd::Zero(n_thruster);
 		base::Vector6d forces_torques = Eigen::VectorXd::Zero(6);
 
 		if (sample.elements.size() > 0)
@@ -229,18 +240,18 @@ namespace adap_samples_input
 	}
 
 	// From PWM->DC. Verify constant used
-	void SamplesInput::PWMtoDC(base::Vector6d &input, base::Vector6d &output, double ThrusterVoltage)
+	void SamplesInput::PWMtoDC(base::VectorXd &input, base::VectorXd &output, double ThrusterVoltage)
 	{
-		output = Eigen::VectorXd::Zero(6);
-		for(int i=0; i< 6; i++)
+		//output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< input.size(); i++)
 				output[i] = ThrusterVoltage * input[i];
 	}
 
 	// From DC->N for each thruster. Verify constant used
-	void SamplesInput::Forces(base::Vector6d &input, base::Vector6d &output, double pos_Cv, double neg_Cv)
+	void SamplesInput::Forces(base::VectorXd &input, base::VectorXd &output, double pos_Cv, double neg_Cv)
 	{
-		output = Eigen::VectorXd::Zero(6);
-		for(int i=0; i< 6; i++)
+		//output = Eigen::VectorXd::Zero(6);
+		for(int i=0; i< input.size(); i++)
 			{
 			if( input[i] <= 0 )
 				output[i] = neg_Cv * input[i] * fabs(double (input[i]));
@@ -250,9 +261,9 @@ namespace adap_samples_input
 	}
 
 	// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
-	void SamplesInput::ForcesTorques(base::Vector6d &input, base::Vector6d &output, Eigen::MatrixXd TCM)
+	void SamplesInput::ForcesTorques(base::VectorXd &input, base::Vector6d &output, Eigen::MatrixXd TCM)
 	{
-		output = Eigen::VectorXd::Zero(6);
+		//output = Eigen::VectorXd::Zero(6);
 		output = TCM * input;
 	}
 
@@ -262,6 +273,62 @@ namespace adap_samples_input
 		ConvertForce_Avalon(sample, forces_output);
 		Queue(size, forces_output, queueOfForces);
 	}
+
+	// Seabotix forces
+	void SamplesInput::ConvertForce_Seabotix(base::samples::Joints &sample, base::samples::Joints &forcesTorques)
+	{
+		forcesTorques.elements.resize(6);
+		int n_thruster = sample.elements.size();
+		base::VectorXd forces = Eigen::VectorXd::Zero(n_thruster);
+		base::VectorXd pwm = Eigen::VectorXd::Zero(n_thruster);
+		base::VectorXd DC_volt = Eigen::VectorXd::Zero(n_thruster);
+		base::Vector6d forces_torques = Eigen::VectorXd::Zero(6);
+
+
+		if (sample.elements.size() > 0)
+			{for (int i=0; i<sample.elements.size(); i++)
+				{
+					pwm[i] = sample.elements[i].effort ;//* (-1); // forces according the movement
+				}
+			}
+
+		// SEABOTIX DATA///////
+		double ThrusterVoltage = 19; // Constant to be verified
+		double pos_Cv = 0.04005;	// Constants to be verified
+		double neg_Cv = 0.03457;
+		Eigen::MatrixXd TCM;
+		TCM.resize(6,4);
+		//Thruster Control Matrix of Avalon (Based on the work of Sankar-2010)
+		// O^1 Ov1 O^2
+		//     O^3			<-Y	xZ
+		//     COG				|
+		//	   O->4				vX
+		TCM << 	1, 1, 0, 0,
+				1, 0, 1, 0,
+				0, 1, 0, 1,
+				0, 0, 0, 0,
+				0.04, 0.04, 0.04, 0,
+				0.05, -0.05, 0, 0.01;
+		////////////////////
+		PWMtoDC(pwm, DC_volt, ThrusterVoltage);
+		Forces(DC_volt, forces, pos_Cv, neg_Cv);
+		ForcesTorques(forces, forces_torques, TCM);
+
+		for (int i=0; i<6; i++)
+		{
+			forcesTorques.elements[i].effort = forces_torques[i];
+		}
+
+		forcesTorques.time = sample.time + base::Time::fromSeconds(1.0155); // Add delay of seabotix
+	}
+
+
+	void SamplesInput::Update_Force_Seabotix(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output)
+	{
+		ConvertForce_Seabotix(sample, forces_output);
+		Queue(size, forces_output, queueOfForces);
+	}
+
 
 	// Compensate the position-filter delays, aligning the forces and velocities
 	bool SamplesInput::Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output)

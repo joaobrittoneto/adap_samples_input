@@ -42,13 +42,14 @@ namespace adap_samples_input
 			// Covert: LaserScan->RBS
 			void Convert_Avalon(base::samples::LaserScan &sample, base::samples::RigidBodyState &output);
 			// Remove a outlier from sample before pushing it into the queue
-			void Remove_Outlier(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
+			void Remove_Outlier_Avalon(std::queue<base::samples::RigidBodyState> &queueOfPosition, base::samples::RigidBodyState &sample);
 			// Compute the velocity and the acceleration (based on ()Filter_SV and (X)Euler's method)
 			//bool Velocity (std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA, double t, double n, double step);
 			// Method used in the Task, orogen component.
 			bool Update_Velocity_Avalon(base::samples::LaserScan &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 
-			bool Update_Velociity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
+			void Convert_Seabotix(base::samples::RigidBodyState &sample, base::samples::RigidBodyState &output);
+			bool Update_Velocity_Seabotix(base::samples::RigidBodyState &sample_position, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_RBA);
 
 			//////////////////////////////////////////////////////////////
 			// Force Data Processing
@@ -56,13 +57,16 @@ namespace adap_samples_input
 			// Convert from PWM->Newton
 			void ConvertForce_Avalon(base::samples::Joints &sample, base::samples::Joints &forcesTorques);
 			// From PWM->DC. Verify constant used
-			void PWMtoDC(base::Vector6d &input, base::Vector6d &output, double ThrusterVoltage);
+			void PWMtoDC(base::VectorXd &input, base::VectorXd &output, double ThrusterVoltage);
 			// From DC->N for each thruster. Verify constant used
-			void Forces(base::Vector6d &input, base::Vector6d &output, double pos_Cv, double neg_Cv);
+			void Forces(base::VectorXd &input, base::VectorXd &output, double pos_Cv, double neg_Cv);
 			// From N->N. From each thruster to net forces and torque in the AUV. Verify TCM matrix
-			void ForcesTorques(base::Vector6d &input, base::Vector6d &output, Eigen::MatrixXd TCM);
+			void ForcesTorques(base::VectorXd &input, base::Vector6d &output, Eigen::MatrixXd TCM);
 			// Method used in the Task, orogen component.
 			void Update_Force_Avalon(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output);
+
+			void ConvertForce_Seabotix(base::samples::Joints &sample, base::samples::Joints &forcesTorques);
+			void Update_Force_Seabotix(base::samples::Joints &sample, std::queue<base::samples::Joints> &queueOfForces, int size, base::samples::Joints &forces_output);
 
 			/////////////////////////////////////////////////////////////////////////
 			// Support functions
