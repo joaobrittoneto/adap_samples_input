@@ -1,16 +1,16 @@
 #ifndef _SAMPLES_DATATYPE_H_
 #define _SAMPLES_DATATYPE_H_
 
-/******************************************************************************/
-/*  Preparing data from Avalon to apply the adaptive parameters identification
-/*
-/*
-/* PURPOSE ---
-/*
-/*  João Da Costa Britto Neto
-/*  joao.neto@dfki.de
-/*  DFKI - BREMEN 2014
-/*****************************************************************************/
+//******************************************************************************/
+//*  Preparing data from Avalon to apply the adaptive parameters identification
+//*
+//*
+//* PURPOSE ---
+//*
+//*  João Da Costa Britto Neto
+//*  joao.neto@dfki.de
+//*  DFKI - BREMEN 2014
+//*****************************************************************************/
 
 #include <iostream>
 #include "base/samples/RigidBodyState.hpp"
@@ -26,6 +26,7 @@ namespace adap_samples_input
 		{
 			base::samples::RigidBodyState rbs;
 			base::samples::RigidBodyAcceleration rba;
+			base::samples::RigidBodyAcceleration ang_rba;
 			base::samples::Joints joints;
 			base::Time time;
 		};
