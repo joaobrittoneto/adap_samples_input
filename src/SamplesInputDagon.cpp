@@ -140,7 +140,7 @@ namespace adap_samples_input
 			}
 */
 		// apparntely the swail_tail, doesn't
-		for (int i=0; i<n_thruster; i++)
+	/*	for (int i=0; i<n_thruster; i++)
 			{
 				if (input_sample.names[i]=="sway_tail")
 				{
@@ -148,6 +148,7 @@ namespace adap_samples_input
 					input_sample.elements[i].raw	*= -1;
 				}
 			}
+	*/
 
 		Forces(input_sample, forces);
 		ForcesTorques(forces, forces_torques);
