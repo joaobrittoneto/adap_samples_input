@@ -36,10 +36,14 @@ namespace adap_samples_input
 			//////////////////////////////////////////////////////////////
 			// Position-Velocity Data Processing
 			///////////////////////////////////////////////////////////////
-			// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the acceleration(&actual_RBA) and the angular_acceleration(&)
-			bool Filter_SV(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA);
+			// Fitler_SV_Vel: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the acceleration(&actual_LInRBA) and the angular_acceleration(&actual_AngRBA) from velocities
+			bool Filter_SV_Vel(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA);
+			// Method used in the Task, orogen component.
+			// Fitler_SV_Vel: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the acceleration(&actual_LInRBA, angular_acceleration(&actual_AngRBA) and velocities from position
+			bool Filter_SV_Pos(std::queue<base::samples::RigidBodyState> &queue, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA);
 			// Method used in the Task, orogen component.
 			bool calcAcceleration(base::samples::RigidBodyState &sample_RBS, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA);
+			bool calcVelAcc(base::samples::RigidBodyState &sample_RBS, std::queue<base::samples::RigidBodyState> &queueOfRBS, int size, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA);
 
 			// Interpolate asynchronous pose_estimation data into synchronous data. To establish the derivatives
 			bool periodicSamples(std::queue<base::samples::RigidBodyState> &queue, base::samples::RigidBodyState &newSample);
