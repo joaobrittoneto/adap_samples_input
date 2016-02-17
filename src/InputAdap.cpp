@@ -16,6 +16,11 @@
 namespace adap_samples_input
 {
 
+	InputAdap::InputAdap()
+	{
+	}
+
+
 	InputAdap::InputAdap(double step)
 	{
 		gstep = step;
@@ -25,7 +30,23 @@ namespace adap_samples_input
 	{
 	}
 
+	void InputAdap::UpdateSavGol(double step, double poly, double position, bool smooth)
+	{
+		gstep = step;
+		gpoly = poly;
+		gposition = position;
+		gsmooth = smooth;
+	}
 
+	double InputAdap::getStep(void)
+	{
+		return gstep;
+	}
+
+	void InputAdap::setStep(double step)
+	{
+		gstep = step;
+	}
 
 	// Fitler_SV: Savitzky-Golay filter. queue: RBS. t_th position in queue to be take in account. Converge for a polynomial n_th order. Calculate the acceleration(&actual_RBA) and the angular_acceleration(&)
 	bool InputAdap::Filter_SV_Vel(std::queue<base::samples::RigidBodyState> &queueOfSamples, double t, double n, double step, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA)
@@ -68,14 +89,22 @@ namespace adap_samples_input
 
 					for(int j=0; j<3; j++)
 					{
-						actual_RBS.angular_velocity[j]	+= (element.angular_velocity[j] * savgol.Weight(i,t,((size-1)/2),n,0));
-						actual_RBS.velocity[j]			+= (element.velocity[j] * savgol.Weight(i,t,((size-1)/2),n,0));
+						if(gsmooth)
+						{
+							actual_RBS.angular_velocity[j]	+= (element.angular_velocity[j] * savgol.Weight(i,t,((size-1)/2),n,0));
+							actual_RBS.velocity[j]			+= (element.velocity[j] * savgol.Weight(i,t,((size-1)/2),n,0));
+						}
 						actual_LinRBA.acceleration[j]	+= (element.velocity[j] * savgol.Weight(i,t,((size-1)/2),n,1));
 						actual_AngRBA.acceleration[j]	+= (element.angular_velocity[j] * savgol.Weight(i,t,((size-1)/2),n,1));
 					}
 
 					if(i == t)
 					{
+						if(!gsmooth)
+						{
+							actual_RBS.angular_velocity	= element.angular_velocity;
+							actual_RBS.velocity			= element.velocity;
+						}
 						actual_RBS.orientation	= element.orientation;
 						actual_RBS.position		= element.position;
 						actual_RBS.time			= element.time;
@@ -142,7 +171,8 @@ namespace adap_samples_input
 
 					for(int j=0; j<3; j++)
 					{
-						//actual_RBS.position[j] 			=	(element.position[j] * savgol.Weight(i,t,((size-1)/2),n,0));
+						if(gsmooth)
+							actual_RBS.position[j] 			=	(element.position[j] * savgol.Weight(i,t,((size-1)/2),n,0));
 						actual_RBS.velocity[j]			+= (element.position[j] * savgol.Weight(i,t,((size-1)/2),n,1));
 						actual_LinRBA.acceleration[j]	+= (element.position[j] * savgol.Weight(i,t,((size-1)/2),n,2));
 					}
@@ -154,12 +184,11 @@ namespace adap_samples_input
 					actual_AngRBA.acceleration[1]	+= (base::getPitch(element.orientation)	* savgol.Weight(i,t,((size-1)/2),n,2));
 					actual_AngRBA.acceleration[2]	+= (base::getYaw(element.orientation) 	* savgol.Weight(i,t,((size-1)/2),n,2));
 
-
-
 					if(i == t)
 					{
+						if(!gsmooth)
+						 actual_RBS.position		= element.position;
 						actual_RBS.orientation	= element.orientation;
-						actual_RBS.position		= element.position;
 						actual_RBS.time			= element.time;
 						actual_LinRBA.time		= element.time;
 						actual_AngRBA.time		= element.time;
@@ -192,7 +221,14 @@ namespace adap_samples_input
 		base::samples::RigidBodyState rbs = sample_RBS;
 
 		Queue(size, rbs, queueOfRBS);
-		return Filter_SV_Vel(queueOfRBS, 0, 3, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
+		return Filter_SV_Vel(queueOfRBS, gposition, gpoly, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
+	}
+
+	// Method used in the Task, orogen component.
+	bool InputAdap::calcAcceleration(std::queue<base::samples::RigidBodyState> &queueOfRBS, base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA)
+	{
+		std::queue<base::samples::RigidBodyState> queueRBS = queueOfRBS;
+		return Filter_SV_Vel(queueRBS, gposition, gpoly, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
 	}
 
 	// Method used in the Task, orogen component.
@@ -201,7 +237,14 @@ namespace adap_samples_input
 		base::samples::RigidBodyState rbs = sample_RBS;
 
 		Queue(size, rbs, queueOfRBS);
-		return Filter_SV_Pos(queueOfRBS, 0, 3, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
+		return Filter_SV_Pos(queueOfRBS, gposition, gpoly, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
+	}
+
+	// Method used in the Task, orogen component.
+	bool InputAdap::calcVelAcc(std::queue<base::samples::RigidBodyState> &queueOfRBS,base::samples::RigidBodyState &actual_RBS, base::samples::RigidBodyAcceleration &actual_LinRBA, base::samples::RigidBodyAcceleration &actual_AngRBA)
+	{
+		std::queue<base::samples::RigidBodyState> queueRBS = queueOfRBS;
+		return Filter_SV_Pos(queueRBS, gposition, gpoly, gstep, actual_RBS, actual_LinRBA, actual_AngRBA);
 	}
 
 
@@ -251,15 +294,22 @@ namespace adap_samples_input
 
 
 
-
-
 	// Compensate the velocity-filter delays, aligning the forces and velocities
 	bool InputAdap::Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output)
+	{
+		int back_queue;
+		return Delay_Compensate(actual_RBS,queueOfForces, forces_output, back_queue);
+	}
+
+	// Compensate the velocity-filter delays, aligning the forces and velocities
+	bool InputAdap::Delay_Compensate(base::samples::RigidBodyState &actual_RBS, std::queue<base::samples::Joints> &queueOfForces, base::samples::Joints &forces_output, int &back_queue)
 	{
 		base::samples::Joints front_force;
 		base::samples::Joints behind_force;
 		behind_force.time = base::Time::fromSeconds(1);
 		bool stop = false;
+		bool output = false;
+		int useless_data = 0;
 		std::queue<base::samples::Joints> queueForces = queueOfForces;
 		//interpolate the force
 		while(!queueForces.empty() && !stop)
@@ -267,25 +317,32 @@ namespace adap_samples_input
 			front_force = queueForces.front();
 			queueForces.pop();
 
+
 			// Pose sample before queue
 			if( (actual_RBS.time-front_force.time).toSeconds() < 0 && behind_force.time == base::Time::fromSeconds(1) )
 			{
 				behind_force = front_force;
 				//front_force = queueofForces.front();
 				forces_output = front_force;
+				//std::cout << "Pose sample before queue: "<<std::endl;
 				stop = true;
+				output = false;
 			}
 
 			// Pose sample after queue
 			else if ((actual_RBS.time-front_force.time).toSeconds() > 0 && queueForces.empty())
 			{
+				useless_data++;
 				forces_output = front_force;
+				//std::cout << "Pose sample after queue: "<<std::endl;
 				stop = true;
+				output = false;
 			}
 
 			// Pose sample in queue
 			if((actual_RBS.time-front_force.time).toSeconds() > 0)
 			{
+				useless_data++;
 				behind_force = front_force;
 			}
 			else
@@ -297,10 +354,14 @@ namespace adap_samples_input
 					forces_output.elements[j].effort = delta + behind_force.elements[j].effort;
 				}
 				forces_output.time = actual_RBS.time;
+				//std::cout << "Pose sample in queue: "<<std::endl;
+				useless_data--;
 				stop = true;
+				output = true;
 			}
 		}
-		return stop;
+		back_queue = useless_data;
+		return output;
 	}
 
 	// Agglomarate the data of velocity, acceleration and force into one structure. To be used after the Delay_Compensate
